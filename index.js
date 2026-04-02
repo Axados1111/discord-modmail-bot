@@ -1,86 +1,43 @@
-const { Client, ChannelType } = require("discord.js");
+const { Client, GatewayIntentBits } = require("discord.js");
 
-const client = new Client({ intents: ["DirectMessages", "Guilds", "GuildMessages", "MessageContent"] });
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
-const MODMAIL_CHANNEL_ID = process.env.MODMAIL_CHANNEL_ID || "1488943640192745563";
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN || "MTQ4ODk2OTQ2ODg0MjM0ODYwNA.GUC72S.h4jY7DvMTmx6wJnnBinZz-yJT59zzfDHpjhCMo";
+if (!DISCORD_TOKEN) {
+  console.error("DISCORD_TOKEN environment variable is not set. Exiting.");
+  process.exit(1);
+}
 
-const userThreads = new Map();
-
-client.on("ready", () => {
-  console.log(`✓ Bot logged in as ${client.user.tag}`);
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
+  ],
 });
 
-client.on("messageCreate", async (message) => {
-  try {
-    if (message.author.bot) return;
+client.once("ready", () => {
+  console.log(`✓ Bot online — logged in as ${client.user.tag}`);
+});
 
-    // Handle DMs from users
-    if (message.isDMChannel()) {
-      const userId = message.author.id;
-      const modmailChannel = await client.channels.fetch(MODMAIL_CHANNEL_ID);
+client.on("error", (error) => {
+  console.error("Discord client error:", error);
+});
 
-      if (!modmailChannel || !modmailChannel.isTextBased()) {
-        console.error("Modmail channel not found or not text-based");
-        return;
-      }
+client.on("warn", (info) => {
+  console.warn("Discord client warning:", info);
+});
 
-      let threadId = userThreads.get(userId);
-      let thread;
+client.on("disconnect", () => {
+  console.warn("Bot disconnected. Attempting to reconnect...");
+});
 
-      if (!threadId) {
-        thread = await modmailChannel.threads.create({
-          name: `${message.author.username} (${userId})`,
-          autoArchiveDuration: 1440,
-        });
-        userThreads.set(userId, thread.id);
-      } else {
-        thread = await modmailChannel.threads.fetch(threadId).catch(() => null);
-        if (!thread) {
-          thread = await modmailChannel.threads.create({
-            name: `${message.author.username} (${userId})`,
-            autoArchiveDuration: 1440,
-          });
-          userThreads.set(userId, thread.id);
-        }
-      }
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
 
-      await thread.send({
-        content: `**${message.author}**: ${message.content}`,
-        allowedMentions: { parse: [] },
-      });
-
-      await message.reply("✓ Your message has been received by the moderation team.");
-    }
-
-    // Handle messages in modmail thread
-    if (message.channel.isThread() && message.channel.parent?.id === MODMAIL_CHANNEL_ID) {
-      if (message.author.bot) return;
-
-      const match = message.channel.name.match(/\((\d+)\)$/);
-      if (!match) return;
-
-      const userId = match[1];
-      const user = await client.users.fetch(userId);
-
-      if (!user) {
-        await message.reply("Could not find user to send DM to.");
-        return;
-      }
-
-      try {
-        await user.send({
-          content: `**Moderation Team**: ${message.content}`,
-          allowedMentions: { parse: [] },
-        });
-        await message.react("✅");
-      } catch (error) {
-        await message.reply("Failed to send DM to user (they may have DMs disabled).");
-      }
-    }
-  } catch (error) {
-    console.error("Error handling message:", error);
-  }
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
 });
 
 client.login(DISCORD_TOKEN);
